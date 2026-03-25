@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Explorer Engine</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #2e7d32; /* Цвет травы */
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        /* Карта, на которой все происходит */
+        #game-map {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            cursor: crosshair;
+        }
+
+        /* Персонаж */
+        #player {
+            width: 50px;
+            height: 50px;
+            position: absolute;
+            font-size: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* Плавное движение */
+            transition: all 0.6s ease-out;
+            z-index: 10;
+            pointer-events: none; /* Чтобы клик проходил сквозь игрока на карту */
+        }
+
+        /* Ресурс (монетка) */
+        .resource {
+            position: absolute;
+            font-size: 30px;
+            transition: transform 0.3s;
+        }
+
+        /* Счётчик сверху */
+        #ui {
+            position: fixed;
+            top: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">Собрано ресурсов: <span id="score">0</span></div>
+
+    <div id="game-map">
+        <div id="player" style="left: 50%; top: 50%;">🤖</div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const player = document.getElementById('player');
+        const map = document.getElementById('game-map');
+        const scoreEl = document.getElementById('score');
+        
+        let score = 0;
+
+        // --- ЛОГИКА ДВИЖЕНИЯ ---
+        map.addEventListener('click', (e) => {
+            // Получаем координаты клика
+            const x = e.clientX;
+            const y = e.clientY;
+
+            // Центрируем персонажа (вычитаем половину его размера)
+            const playerSize = 25; 
+            player.style.left = (x - playerSize) + 'px';
+            player.style.top = (y - playerSize) + 'px';
+
+            // Легкая вибрация при начале движения
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+
+            // Проверяем сбор ресурсов через небольшую задержку (когда игрок "дойдет")
+            setTimeout(checkCollision, 600);
+        });
+
+        // --- ЛОГИКА РЕСУРСОВ ---
+        function spawnResource() {
+            const res = document.createElement('div');
+            res.className = 'resource';
+            res.innerText = '💎';
+            
+            // Случайные координаты на карте
+            const x = Math.random() * (window.innerWidth - 50);
+            const y = Math.random() * (window.innerHeight - 50);
+            
+            res.style.left = x + 'px';
+            res.style.top = y + 'px';
+            
+            map.appendChild(res);
+        }
+
+        function checkCollision() {
+            const playerRect = player.getBoundingClientRect();
+            const resources = document.querySelectorAll('.resource');
+
+            resources.forEach(res => {
+                const resRect = res.getBoundingClientRect();
+
+                // Простая проверка пересечения прямоугольников
+                const isHit = !(playerRect.right < resRect.left || 
+                                playerRect.left > resRect.right || 
+                                playerRect.bottom < resRect.top || 
+                                playerRect.top > resRect.bottom);
+
+                if (isHit) {
+                    res.remove();
+                    score++;
+                    scoreEl.innerText = score;
+                    spawnResource(); // Создаем новый взамен собранного
+                    
+                    if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                }
+            });
+        }
+
+        // Создаем первые 3 ресурса на старте
+        for(let i=0; i<3; i++) spawnResource();
+
+    </script>
+</body>
+</html>
