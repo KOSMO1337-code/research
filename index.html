@@ -3,138 +3,322 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Explorer Engine</title>
+    <title>Survival Mini App</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body {
-            margin: 0; padding: 0;
-            background-color: #2e7d32; /* Цвет травы */
-            overflow: hidden;
-            font-family: sans-serif;
-        }
+        :root { --bg: #2e7d32; --ui-bg: rgba(0, 0, 0, 0.7); }
+        body { margin: 0; padding: 0; background-color: var(--bg); overflow: hidden; font-family: sans-serif; user-select: none; }
+        * { box-sizing: border-box; }
 
-        /* Карта, на которой все происходит */
-        #game-map {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-            cursor: crosshair;
-        }
+        /* Игровое поле */
+        #game-map { width: 100vw; height: 100vh; position: relative; cursor: crosshair; }
 
-        /* Персонаж */
+        /* Тряска при уроне */
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-10px, 5px); }
+            40% { transform: translate(10px, -5px); }
+            60% { transform: translate(-10px, -5px); }
+            80% { transform: translate(10px, 5px); }
+        }
+        .shake { animation: shake 0.3s; }
+
+        /* Игрок */
         #player {
-            width: 50px;
-            height: 50px;
-            position: absolute;
-            font-size: 40px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            /* Плавное движение */
-            transition: all 0.6s ease-out;
-            z-index: 10;
-            pointer-events: none; /* Чтобы клик проходил сквозь игрока на карту */
+            width: 40px; height: 40px; position: absolute; font-size: 35px;
+            display: flex; justify-content: center; align-items: center;
+            transition: left 0.4s ease-out, top 0.4s ease-out; /* Плавный шаг */
+            z-index: 10; pointer-events: none;
+        }
+        /* Мигание при неуязвимости */
+        .invulnerable { opacity: 0.5; animation: blink 0.2s infinite; }
+        @keyframes blink { 50% { opacity: 0.1; } }
+
+        /* Сущности */
+        .resource { position: absolute; font-size: 25px; transition: transform 0.2s; z-index: 5; }
+        .enemy { position: absolute; font-size: 35px; z-index: 8; pointer-events: none; }
+
+        /* Верхняя панель (UI) */
+        #ui-bar {
+            position: fixed; top: 10px; left: 10px; right: 10px; background: var(--ui-bg);
+            color: white; padding: 10px 15px; border-radius: 15px; display: flex;
+            justify-content: space-between; font-weight: bold; font-size: 16px; z-index: 100;
         }
 
-        /* Ресурс (монетка) */
-        .resource {
-            position: absolute;
-            font-size: 30px;
-            transition: transform 0.3s;
+        /* Меню оверлей */
+        #menu-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000; color: white;
         }
-
-        /* Счётчик сверху */
-        #ui {
-            position: fixed;
-            top: 20px; left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.6);
-            color: #fff;
-            padding: 10px 20px;
-            border-radius: 20px;
-            font-weight: bold;
-            z-index: 100;
+        .menu-title { font-size: 28px; margin-bottom: 20px; text-align: center; }
+        .btn {
+            background: #ffeb3b; color: #000; border: none; padding: 12px 25px;
+            border-radius: 10px; font-size: 18px; font-weight: bold; margin: 10px; cursor: pointer;
+            width: 80%; max-width: 300px;
         }
+        .btn:active { transform: scale(0.95); }
+        
+        /* Сетка уровней */
+        .level-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 20px 0;
+            width: 90%; max-width: 350px;
+        }
+        .lvl-btn {
+            background: #4caf50; color: white; border: none; padding: 15px 0;
+            border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer;
+        }
+        .lvl-btn.locked { background: #555; color: #888; cursor: not-allowed; }
     </style>
 </head>
-<body>
+<body id="body">
 
-    <div id="ui">Собрано ресурсов: <span id="score">0</span></div>
+    <div id="ui-bar" style="display: none;">
+        <div id="lives-display">❤️❤️❤️</div>
+        <div id="level-display">Ур: 1</div>
+        <div id="score-display">💎 0/10</div>
+    </div>
 
     <div id="game-map">
-        <div id="player" style="left: 50%; top: 50%;">🤖</div>
+        <div id="player" style="left: 50vw; top: 50vh;">🤠</div>
+    </div>
+
+    <div id="menu-overlay">
+        <div class="menu-title" id="menu-title">Охота за кристаллами</div>
+        
+        <div class="level-grid" id="level-grid">
+            </div>
+
+        <button class="btn" id="restart-btn" onclick="startLevel(currentLevel)" style="display: none;">🔄 Рестарт уровня</button>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // === НАСТРОЙКИ УРОВНЕЙ (10 штук) ===
+        // Формула из ТЗ: кристаллы растут, враги растут
+        const LEVELS = [
+            { reqCrystals: 10, enemies: 1, speed: 1.5 },
+            { reqCrystals: 12, enemies: 2, speed: 1.6 },
+            { reqCrystals: 15, enemies: 2, speed: 1.8 },
+            { reqCrystals: 17, enemies: 3, speed: 2.0 },
+            { reqCrystals: 20, enemies: 3, speed: 2.2 },
+            { reqCrystals: 22, enemies: 4, speed: 2.4 },
+            { reqCrystals: 25, enemies: 4, speed: 2.5 },
+            { reqCrystals: 27, enemies: 5, speed: 2.6 },
+            { reqCrystals: 30, enemies: 5, speed: 2.8 },
+            { reqCrystals: 35, enemies: 6, speed: 3.0 } // Босс-уровень
+        ];
+
+        // === СОСТОЯНИЕ ИГРЫ ===
+        let unlockedLevel = parseInt(localStorage.getItem('survival_unlocked')) || 0;
+        let currentLevel = 0;
+        let lives = 3;
+        let crystalsCollected = 0;
+        let isInvulnerable = false;
+        let isPlaying = false;
+        let animationFrameId;
+        
+        // Массивы объектов на карте
+        let enemiesData = []; 
+
         const player = document.getElementById('player');
         const map = document.getElementById('game-map');
-        const scoreEl = document.getElementById('score');
-        
-        let score = 0;
+        const menuOverlay = document.getElementById('menu-overlay');
 
-        // --- ЛОГИКА ДВИЖЕНИЯ ---
-        map.addEventListener('click', (e) => {
-            // Получаем координаты клика
-            const x = e.clientX;
-            const y = e.clientY;
+        // === ГЕНЕРАЦИЯ МЕНЮ УРОВНЕЙ ===
+        function renderMenu(title, showRestart = false) {
+            isPlaying = false;
+            cancelAnimationFrame(animationFrameId);
+            document.getElementById('ui-bar').style.display = 'none';
+            menuOverlay.style.display = 'flex';
+            document.getElementById('menu-title').innerText = title;
+            document.getElementById('restart-btn').style.display = showRestart ? 'block' : 'none';
 
-            // Центрируем персонажа (вычитаем половину его размера)
-            const playerSize = 25; 
-            player.style.left = (x - playerSize) + 'px';
-            player.style.top = (y - playerSize) + 'px';
+            const grid = document.getElementById('level-grid');
+            grid.innerHTML = '';
+            for (let i = 0; i < LEVELS.length; i++) {
+                const btn = document.createElement('button');
+                btn.innerText = i + 1;
+                btn.className = `lvl-btn ${i > unlockedLevel ? 'locked' : ''}`;
+                btn.onclick = () => { if (i <= unlockedLevel) startLevel(i); };
+                grid.appendChild(btn);
+            }
+        }
 
-            // Легкая вибрация при начале движения
+        // === СТАРТ УРОВНЯ ===
+        function startLevel(lvlIndex) {
+            currentLevel = lvlIndex;
+            lives = 3;
+            crystalsCollected = 0;
+            isInvulnerable = false;
+            enemiesData = [];
+            player.className = '';
+            
+            // Очищаем карту от старого мусора
+            document.querySelectorAll('.resource, .enemy').forEach(el => el.remove());
+            
+            // Ставим игрока в центр
+            player.style.left = (window.innerWidth / 2 - 20) + 'px';
+            player.style.top = (window.innerHeight / 2 - 20) + 'px';
+
+            // Спавним первого кристалла и врагов
+            spawnCrystal();
+            for (let i = 0; i < LEVELS[lvlIndex].enemies; i++) spawnEnemy();
+
+            updateUI();
+            menuOverlay.style.display = 'none';
+            document.getElementById('ui-bar').style.display = 'flex';
+            
+            isPlaying = true;
+            gameLoop(); // Запускаем сердце игры!
+        }
+
+        function updateUI() {
+            document.getElementById('lives-display').innerText = '❤️'.repeat(lives) + '🖤'.repeat(3 - lives);
+            document.getElementById('level-display').innerText = `Ур: ${currentLevel + 1}`;
+            document.getElementById('score-display').innerText = `💎 ${crystalsCollected}/${LEVELS[currentLevel].reqCrystals}`;
+        }
+
+        // === ЛОГИКА ДВИЖЕНИЯ ИГРОКА ===
+        map.addEventListener('pointerdown', (e) => {
+            if (!isPlaying) return;
+            const x = e.clientX || e.touches[0].clientX;
+            const y = e.clientY || e.touches[0].clientY;
+            
+            player.style.left = (x - 20) + 'px';
+            player.style.top = (y - 20) + 'px';
+            
             if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-
-            // Проверяем сбор ресурсов через небольшую задержку (когда игрок "дойдет")
-            setTimeout(checkCollision, 600);
         });
 
-        // --- ЛОГИКА РЕСУРСОВ ---
-        function spawnResource() {
+        // === СПАВН СУЩНОСТЕЙ ===
+        function spawnCrystal() {
             const res = document.createElement('div');
             res.className = 'resource';
             res.innerText = '💎';
-            
-            // Случайные координаты на карте
-            const x = Math.random() * (window.innerWidth - 50);
-            const y = Math.random() * (window.innerHeight - 50);
-            
-            res.style.left = x + 'px';
-            res.style.top = y + 'px';
-            
+            res.style.left = Math.random() * (window.innerWidth - 40) + 'px';
+            res.style.top = Math.random() * (window.innerHeight - 80) + 60 + 'px'; // Ниже UI
             map.appendChild(res);
         }
 
-        function checkCollision() {
-            const playerRect = player.getBoundingClientRect();
-            const resources = document.querySelectorAll('.resource');
+        function spawnEnemy() {
+            const el = document.createElement('div');
+            el.className = 'enemy';
+            el.innerText = '👻';
+            // Спавним врага где-то за краем экрана (сверху или снизу)
+            let x = Math.random() * window.innerWidth;
+            let y = Math.random() > 0.5 ? -50 : window.innerHeight + 50;
+            
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            map.appendChild(el);
 
-            resources.forEach(res => {
-                const resRect = res.getBoundingClientRect();
-
-                // Простая проверка пересечения прямоугольников
-                const isHit = !(playerRect.right < resRect.left || 
-                                playerRect.left > resRect.right || 
-                                playerRect.bottom < resRect.top || 
-                                playerRect.top > resRect.bottom);
-
-                if (isHit) {
-                    res.remove();
-                    score++;
-                    scoreEl.innerText = score;
-                    spawnResource(); // Создаем новый взамен собранного
-                    
-                    if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-                }
-            });
+            enemiesData.push({ element: el, x: x, y: y });
         }
 
-        // Создаем первые 3 ресурса на старте
-        for(let i=0; i<3; i++) spawnResource();
+        // === УРОН И НЕУЯЗВИМОСТЬ ===
+        function takeDamage() {
+            if (isInvulnerable || !isPlaying) return;
+            
+            lives--;
+            updateUI();
+            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+            
+            // Тряска экрана
+            const body = document.getElementById('body');
+            body.classList.remove('shake');
+            void body.offsetWidth; 
+            body.classList.add('shake');
+
+            if (lives <= 0) {
+                renderMenu(`💀 Вы погибли на ${currentLevel + 1} уровне`, true);
+                return;
+            }
+
+            // Кадры неуязвимости (1.5 секунды)
+            isInvulnerable = true;
+            player.classList.add('invulnerable');
+            setTimeout(() => {
+                isInvulnerable = false;
+                player.classList.remove('invulnerable');
+            }, 1500);
+        }
+
+        // === ИГРОВОЙ ЦИКЛ (МАГИЯ 60 FPS) ===
+        function gameLoop() {
+            if (!isPlaying) return;
+
+            const playerRect = player.getBoundingClientRect();
+            const px = playerRect.left + 20; // Центр игрока
+            const py = playerRect.top + 20;
+
+            // 1. ПРОВЕРКА КРИСТАЛЛОВ
+            document.querySelectorAll('.resource').forEach(res => {
+                const resRect = res.getBoundingClientRect();
+                const dist = Math.hypot(px - (resRect.left + 15), py - (resRect.top + 15));
+                if (dist < 40) { // Игрок коснулся кристалла
+                    res.remove();
+                    crystalsCollected++;
+                    updateUI();
+                    if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+
+                    // Проверка победы на уровне
+                    if (crystalsCollected >= LEVELS[currentLevel].reqCrystals) {
+                        if (currentLevel === unlockedLevel && unlockedLevel < 9) {
+                            unlockedLevel++;
+                            localStorage.setItem('survival_unlocked', unlockedLevel);
+                        }
+                        renderMenu(currentLevel === 9 ? '🏆 ИГРА ПРОЙДЕНА!' : `🎉 Уровень ${currentLevel + 1} пройден!`);
+                        return;
+                    } else {
+                        spawnCrystal(); // Новый кристалл
+                    }
+                }
+            });
+
+            // 2. ИИ ВРАГОВ (Движение и избегание друг друга)
+            const speed = LEVELS[currentLevel].speed;
+
+            enemiesData.forEach((enemy, i) => {
+                // Вектор к игроку
+                let dx = px - (enemy.x + 15);
+                let dy = py - (enemy.y + 15);
+                let dist = Math.hypot(dx, dy);
+
+                // Нормализация и движение
+                if (dist > 0) {
+                    enemy.x += (dx / dist) * speed;
+                    enemy.y += (dy / dist) * speed;
+                }
+
+                // Враги отталкиваются друг от друга (чтобы не слипаться)
+                enemiesData.forEach((otherEnemy, j) => {
+                    if (i !== j) {
+                        let pushDx = enemy.x - otherEnemy.x;
+                        let pushDy = enemy.y - otherEnemy.y;
+                        let pushDist = Math.hypot(pushDx, pushDy);
+                        if (pushDist < 35 && pushDist > 0) {
+                            enemy.x += (pushDx / pushDist) * 1.5;
+                            enemy.y += (pushDy / pushDist) * 1.5;
+                        }
+                    }
+                });
+
+                // Применяем координаты
+                enemy.element.style.left = enemy.x + 'px';
+                enemy.element.style.top = enemy.y + 'px';
+
+                // Проверка столкновения с игроком
+                if (dist < 35) takeDamage();
+            });
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // Показываем главное меню при старте
+        renderMenu('Охота за кристаллами');
 
     </script>
 </body>
