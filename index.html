@@ -2,324 +2,503 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Survival Mini App</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Четыре в ряд — Telegram Mini App</title>
     <style>
-        :root { --bg: #2e7d32; --ui-bg: rgba(0, 0, 0, 0.7); }
-        body { margin: 0; padding: 0; background-color: var(--bg); overflow: hidden; font-family: sans-serif; user-select: none; }
-        * { box-sizing: border-box; }
-
-        /* Игровое поле */
-        #game-map { width: 100vw; height: 100vh; position: relative; cursor: crosshair; }
-
-        /* Тряска при уроне */
-        @keyframes shake {
-            0%, 100% { transform: translate(0, 0); }
-            20% { transform: translate(-10px, 5px); }
-            40% { transform: translate(10px, -5px); }
-            60% { transform: translate(-10px, -5px); }
-            80% { transform: translate(10px, 5px); }
-        }
-        .shake { animation: shake 0.3s; }
-
-        /* Игрок */
-        #player {
-            width: 40px; height: 40px; position: absolute; font-size: 35px;
-            display: flex; justify-content: center; align-items: center;
-            transition: left 0.4s ease-out, top 0.4s ease-out; /* Плавный шаг */
-            z-index: 10; pointer-events: none;
-        }
-        /* Мигание при неуязвимости */
-        .invulnerable { opacity: 0.5; animation: blink 0.2s infinite; }
-        @keyframes blink { 50% { opacity: 0.1; } }
-
-        /* Сущности */
-        .resource { position: absolute; font-size: 25px; transition: transform 0.2s; z-index: 5; }
-        .enemy { position: absolute; font-size: 35px; z-index: 8; pointer-events: none; }
-
-        /* Верхняя панель (UI) */
-        #ui-bar {
-            position: fixed; top: 10px; left: 10px; right: 10px; background: var(--ui-bg);
-            color: white; padding: 10px 15px; border-radius: 15px; display: flex;
-            justify-content: space-between; font-weight: bold; font-size: 16px; z-index: 100;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        /* Меню оверлей */
-        #menu-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 1000; color: white;
+        body {
+            min-height: 100vh;
+            background: var(--tg-theme-bg-color, #ffffff);
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            transition: background 0.2s ease;
         }
-        .menu-title { font-size: 28px; margin-bottom: 20px; text-align: center; }
-        .btn {
-            background: #ffeb3b; color: #000; border: none; padding: 12px 25px;
-            border-radius: 10px; font-size: 18px; font-weight: bold; margin: 10px; cursor: pointer;
-            width: 80%; max-width: 300px;
+
+        /* Стили для блокировки вне Telegram */
+        .telegram-only {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #1e2a3a 0%, #0f172a 100%);
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+            color: white;
         }
-        .btn:active { transform: scale(0.95); }
-        
-        /* Сетка уровней */
-        .level-grid {
-            display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 20px 0;
-            width: 90%; max-width: 350px;
+
+        .telegram-only .icon {
+            font-size: 80px;
+            margin-bottom: 30px;
+            animation: bounce 2s infinite;
         }
-        .lvl-btn {
-            background: #4caf50; color: white; border: none; padding: 15px 0;
-            border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer;
+
+        .telegram-only h2 {
+            font-size: 28px;
+            margin-bottom: 16px;
         }
-        .lvl-btn.locked { background: #555; color: #888; cursor: not-allowed; }
+
+        .telegram-only p {
+            font-size: 16px;
+            margin-bottom: 30px;
+            opacity: 0.9;
+            max-width: 280px;
+        }
+
+        .telegram-only button {
+            background: #2481cc;
+            border: none;
+            color: white;
+            padding: 14px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .telegram-only button:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Основной контент игры (показывается только в Telegram) */
+        .game-content {
+            display: block;
+        }
+
+        .game-container {
+            max-width: 550px;
+            width: 100%;
+            background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            border-radius: 32px;
+            padding: 20px 16px 24px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--tg-theme-text-color, #222);
+            margin-bottom: 8px;
+            letter-spacing: -0.3px;
+        }
+
+        .status {
+            font-size: 1.2rem;
+            font-weight: 500;
+            margin: 12px 0 16px;
+            padding: 8px 12px;
+            border-radius: 60px;
+            background: var(--tg-theme-bg-color, #fff);
+            display: inline-block;
+            color: var(--tg-theme-text-color, #111);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            background-color: #1e2a3a;
+            border-radius: 28px;
+            padding: 12px 8px;
+            gap: 6px;
+            margin: 16px 0;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05), 0 6px 12px rgba(0,0,0,0.1);
+        }
+
+        .cell {
+            aspect-ratio: 1 / 1;
+            background-color: var(--tg-theme-bg-color, #f0f0f0);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s ease, background 0.2s;
+            cursor: pointer;
+            box-shadow: inset 0 -2px 0 rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.1);
+        }
+.cell
+.re
+1);
+        }
+
+        .cell.red {
+            background: radial-gradient(circle at 35% 30%, #ff5e5e, #c73131);
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.1), inset 0 2px 4px rgba(255,255,255,0.4);
+        }
+
+        .cell.yellow {
+            background: radial-gradient(circle at 35% 30%, #ffdd77, #e5a00d);
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.1), inset 0 2px 4px rgba(255,255,255,0.4);
+        }
+
+        .cell.win-glow {
+            box-shadow: 0 0 0 3px gold, 0 0 0 6px rgba(255,215,0,0.5);
+        }
+
+        button {
+            background: var(--tg-theme-button-color, #2c3e66);
+            border: none;
+            color: var(--tg-theme-button-text-color, white);
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 40px;
+            margin-top: 12px;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.05s linear;
+            width: 80%;
+            max-width: 200px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        button:active {
+            transform: scale(0.97);
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 0.75rem;
+            color: var(--tg-theme-hint-color, #888);
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        @media (max-width: 480px) {
+            .game-container {
+                padding: 14px 12px 20px;
+            }
+            .status {
+                font-size: 1rem;
+            }
+        }
     </style>
 </head>
-<body id="body">
+<body>
 
-    <div id="ui-bar" style="display: none;">
-        <div id="lives-display">❤️❤️❤️</div>
-        <div id="level-display">Ур: 1</div>
-        <div id="score-display">💎 0/10</div>
+<!-- Блок для показа вне Telegram -->
+<div class="telegram-only" id="telegramOnlyBlock">
+    <div class="icon">📱</div>
+    <h2>Доступно только в Telegram</h2>
+    <p>Эта игра предназначена для запуска внутри мессенджера Telegram</p>
+    <button onclick="openTelegram()">Открыть в Telegram</button>
+</div>
+
+<!-- Основной контент игры -->
+<div class="game-content" id="gameContent">
+    <div class="game-container">
+        <h1>🔴 Четыре в ряд 🟡</h1>
+        <div class="status" id="gameStatus">Ход: 🔴 Красный</div>
+        <div class="board" id="board"></div>
+        <button id="resetButton">🔄 Новая игра</button>
+        <div class="footer">
+            <span>Игрок 1: 🔴</span>
+            <span>Игрок 2: 🟡</span>
+        </div>
     </div>
+</div>
 
-    <div id="game-map">
-        <div id="player" style="left: 50vw; top: 50vh;">🤠</div>
-    </div>
+<script>
+    // ========== ПРОВЕРКА ЗАПУСКА В TELEGRAM ==========
+    const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
+    
+    if (!isTelegram) {
+        // Показываем блок "Только в Telegram" и скрываем игру
+        document.getElementById('telegramOnlyBlock').style.display = 'flex';
+        document.getElementById('gameContent').style.display = 'none';
+    } else {
+        // В Telegram - запускаем игру
+        document.getElementById('telegramOnlyBlock').style.display = 'none';
+        document.getElementById('gameContent').style.display = 'block';
+        initGameInTelegram();
+    }
 
-    <div id="menu-overlay">
-        <div class="menu-title" id="menu-title">Охота за кристаллами</div>
-        
-        <div class="level-grid" id="level-grid">
-            </div>
+    // Функция для кнопки "Открыть в Telegram"
+    function openTelegram() {
+        // Пытаемся открыть бота (нужно заменить username на вашего бота)
+        const botUsername = 'ваш_бот_username'; // Замените на username вашего бота
+        window.location.href = `https://t.me/${botUsername}`;
+    }
 
-        <button class="btn" id="restart-btn" onclick="startLevel(currentLevel)" style="display: none;">🔄 Рестарт уровня</button>
-    </div>
+    // ========== ВСЯ ЛОГИКА ИГРЫ (запускается только в Telegram) ==========
+    function initGameInTelegram() {
+        const ROWS = 6;
+        const COLS = 7;
+        let board = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+        let currentPlayer = 'red';
+        let gameActive = true;
+        let winnerInfo = null;
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+        const boardElement = document.getElementById('board');
+        const statusDiv = document.getElementById('gameStatus');
+        const resetBtn = document.getElementById('resetButton');
 
-        // === НАСТРОЙКИ УРОВНЕЙ (10 штук) ===
-        // Формула из ТЗ: кристаллы растут, враги растут
-        const LEVELS = [
-            { reqCrystals: 10, enemies: 1, speed: 1.5 },
-            { reqCrystals: 12, enemies: 2, speed: 1.6 },
-            { reqCrystals: 15, enemies: 2, speed: 1.8 },
-            { reqCrystals: 17, enemies: 3, speed: 2.0 },
-            { reqCrystals: 20, enemies: 3, speed: 2.2 },
-            { reqCrystals: 22, enemies: 4, speed: 2.4 },
-            { reqCrystals: 25, enemies: 4, speed: 2.5 },
-            { reqCrystals: 27, enemies: 5, speed: 2.6 },
-            { reqCrystals: 30, enemies: 5, speed: 2.8 },
-            { reqCrystals: 35, enemies: 6, speed: 3.0 } // Босс-уровень
-        ];
+        const playerNames = {
+            red: '🔴 Красный',
+            yellow: '🟡 Жёлтый'
+        };
 
-        // === СОСТОЯНИЕ ИГРЫ ===
-        let unlockedLevel = parseInt(localStorage.getItem('survival_unlocked')) || 0;
-        let currentLevel = 0;
-        let lives = 3;
-        let crystalsCollected = 0;
-        let isInvulnerable = false;
-        let isPlaying = false;
-        let animationFrameId;
-        
-        // Массивы объектов на карте
-        let enemiesData = []; 
-
-        const player = document.getElementById('player');
-        const map = document.getElementById('game-map');
-        const menuOverlay = document.getElementById('menu-overlay');
-
-        // === ГЕНЕРАЦИЯ МЕНЮ УРОВНЕЙ ===
-        function renderMenu(title, showRestart = false) {
-            isPlaying = false;
-            cancelAnimationFrame(animationFrameId);
-            document.getElementById('ui-bar').style.display = 'none';
-            menuOverlay.style.display = 'flex';
-            document.getElementById('menu-title').innerText = title;
-            document.getElementById('restart-btn').style.display = showRestart ? 'block' : 'none';
-
-            const grid = document.getElementById('level-grid');
-            grid.innerHTML = '';
-            for (let i = 0; i < LEVELS.length; i++) {
-                const btn = document.createElement('button');
-                btn.innerText = i + 1;
-                btn.className = `lvl-btn ${i > unlockedLevel ? 'locked' : ''}`;
-                btn.onclick = () => { if (i <= unlockedLevel) startLevel(i); };
-                grid.appendChild(btn);
-            }
-        }
-
-        // === СТАРТ УРОВНЯ ===
-        function startLevel(lvlIndex) {
-            currentLevel = lvlIndex;
-            lives = 3;
-            crystalsCollected = 0;
-            isInvulnerable = false;
-            enemiesData = [];
-            player.className = '';
-            
-            // Очищаем карту от старого мусора
-            document.querySelectorAll('.resource, .enemy').forEach(el => el.remove());
-            
-            // Ставим игрока в центр
-            player.style.left = (window.innerWidth / 2 - 20) + 'px';
-            player.style.top = (window.innerHeight / 2 - 20) + 'px';
-
-            // Спавним первого кристалла и врагов
-            spawnCrystal();
-            for (let i = 0; i < LEVELS[lvlIndex].enemies; i++) spawnEnemy();
-
-            updateUI();
-            menuOverlay.style.display = 'none';
-            document.getElementById('ui-bar').style.display = 'flex';
-            
-            isPlaying = true;
-            gameLoop(); // Запускаем сердце игры!
-        }
-
-        function updateUI() {
-            document.getElementById('lives-display').innerText = '❤️'.repeat(lives) + '🖤'.repeat(3 - lives);
-            document.getElementById('level-display').innerText = `Ур: ${currentLevel + 1}`;
-            document.getElementById('score-display').innerText = `💎 ${crystalsCollected}/${LEVELS[currentLevel].reqCrystals}`;
-        }
-
-        // === ЛОГИКА ДВИЖЕНИЯ ИГРОКА ===
-        map.addEventListener('pointerdown', (e) => {
-            if (!isPlaying) return;
-            const x = e.clientX || e.touches[0].clientX;
-            const y = e.clientY || e.touches[0].clientY;
-            
-            player.style.left = (x - 20) + 'px';
-            player.style.top = (y - 20) + 'px';
-            
-            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-        });
-
-        // === СПАВН СУЩНОСТЕЙ ===
-        function spawnCrystal() {
-            const res = document.createElement('div');
-            res.className = 'resource';
-            res.innerText = '💎';
-            res.style.left = Math.random() * (window.innerWidth - 40) + 'px';
-            res.style.top = Math.random() * (window.innerHeight - 80) + 60 + 'px'; // Ниже UI
-            map.appendChild(res);
-        }
-
-        function spawnEnemy() {
-            const el = document.createElement('div');
-            el.className = 'enemy';
-            el.innerText = '👻';
-            // Спавним врага где-то за краем экрана (сверху или снизу)
-            let x = Math.random() * window.innerWidth;
-            let y = Math.random() > 0.5 ? -50 : window.innerHeight + 50;
-            
-            el.style.left = x + 'px';
-            el.style.top = y + 'px';
-            map.appendChild(el);
-
-            enemiesData.push({ element: el, x: x, y: y });
-        }
-
-        // === УРОН И НЕУЯЗВИМОСТЬ ===
-        function takeDamage() {
-            if (isInvulnerable || !isPlaying) return;
-            
-            lives--;
-            updateUI();
-            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
-            
-            // Тряска экрана
-            const body = document.getElementById('body');
-            body.classList.remove('shake');
-            void body.offsetWidth; 
-            body.classList.add('shake');
-
-            if (lives <= 0) {
-                renderMenu(`💀 Вы погибли на ${currentLevel + 1} уровне`, true);
-                return;
-            }
-
-            // Кадры неуязвимости (1.5 секунды)
-            isInvulnerable = true;
-            player.classList.add('invulnerable');
-            setTimeout(() => {
-                isInvulnerable = false;
-                player.classList.remove('invulnerable');
-            }, 1500);
-        }
-
-        // === ИГРОВОЙ ЦИКЛ (МАГИЯ 60 FPS) ===
-        function gameLoop() {
-            if (!isPlaying) return;
-
-            const playerRect = player.getBoundingClientRect();
-            const px = playerRect.left + 20; // Центр игрока
-            const py = playerRect.top + 20;
-
-            // 1. ПРОВЕРКА КРИСТАЛЛОВ
-            document.querySelectorAll('.resource').forEach(res => {
-                const resRect = res.getBoundingClientRect();
-                const dist = Math.hypot(px - (resRect.left + 15), py - (resRect.top + 15));
-                if (dist < 40) { // Игрок коснулся кристалла
-                    res.remove();
-                    crystalsCollected++;
-                    updateUI();
-                    if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-
-                    // Проверка победы на уровне
-                    if (crystalsCollected >= LEVELS[currentLevel].reqCrystals) {
-                        if (currentLevel === unlockedLevel && unlockedLevel < 9) {
-                            unlockedLevel++;
-                            localStorage.setItem('survival_unlocked', unlockedLevel);
-                        }
-                        renderMenu(currentLevel === 9 ? '🏆 ИГРА ПРОЙДЕНА!' : `🎉 Уровень ${currentLevel + 1} пройден!`);
-                        return;
-                    } else {
-                        spawnCrystal(); // Новый кристалл
+        // Инициализация Telegram Web App
+        let tg = null;
+        try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                tg = window.Telegram.WebApp;
+                tg.expand
+();
+                tg.enableClosingConfirmation();
+                document.body.style.backgroundColor = tg.themeParams.bg_color || '#ffffff';
+                
+                // Применяем цвета темы
+                const style = document.createElement('style');
+                style.textContent = `
+                    :root {
+                        --tg-theme-bg-color: ${tg.themeParams.bg_color || '#ffffff'};
+                        --tg-theme-text-color: ${tg.themeParams.text_color || '#222222'};
+                        --tg-theme-hint-color: ${tg.themeParams.hint_color || '#999999'};
+                        --tg-theme-link-color: ${tg.themeParams.link_color || '#2481cc'};
+                        --tg-theme-button-color: ${tg.themeParams.button_color || '#2c3e66'};
+                        --tg-theme-button-text-color: ${tg.themeParams.button_text_color || '#ffffff'};
+                        --tg-theme-secondary-bg-color: ${tg.themeParams.secondary_bg_color || '#f0f0f0'};
                     }
+                `;
+                document.head.appendChild(style);
+            }
+        } catch (e) {
+            console.warn("Ошибка инициализации Telegram WebApp", e);
+        }
+
+        // Безопасный тактильный отклик
+        function safeHapticImpact(style = 'light') {
+            if (tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred) {
+                tg.HapticFeedback.impactOccurred(style);
+            }
+        }
+        function safeHapticNotification(type = 'error') {
+            if (tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred) {
+                tg.HapticFeedback.notificationOccurred(type);
+            }
+        }
+
+        function updateStatusMessage() {
+            if (!gameActive) {
+                if (winnerInfo) {
+                    statusDiv.innerText = `🏆 Победа: ${playerNames[winnerInfo.player]}! 🏆`;
+                } else {
+                    statusDiv.innerText = `🤝 Ничья! Игра окончена 🤝`;
                 }
+            } else {
+                statusDiv.innerText = `Ход: ${playerNames[currentPlayer]}`;
+            }
+        }
+
+        function checkWin(row, col, player) {
+            const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+            for (let [dx, dy] of directions) {
+                let count = 1;
+                const winningCells = [[row, col]];
+                for (let step = 1; step <= 3; step++) {
+                    const newRow = row + dx * step;
+                    const newCol = col + dy * step;
+                    if (newRow < 0 || newRow >= ROWS || newCol < 0 || newCol >= COLS) break;
+                    if (board[newRow][newCol] === player) {
+                        count++;
+                        winningCells.push([newRow, newCol]);
+                    } else break;
+                }
+                for (let step = 1; step <= 3; step++) {
+                    const newRow = row - dx * step;
+                    const newCol = col - dy * step;
+                    if (newRow < 0 || newRow >= ROWS || newCol < 0 || newCol >= COLS) break;
+                    if (board[newRow][newCol] === player) {
+                        count++;
+                        winningCells.push([newRow, newCol]);
+                    } else break;
+                }
+                if (count >= 4) {
+                    return winningCells.slice(0, 4);
+                }
+            }
+            return null;
+        }
+
+        function isDraw() {
+            for (let col = 0; col < COLS; col++) {
+                if (board[0][col] === null) return false;
+            }
+            return true;
+        }
+
+        function endGame(winner = null, winningCells = null) {
+            gameActive = false;
+            if (winner) {
+                winnerInfo = { player: winner, winningCells };
+                if (winningCells) {
+                    for (let [r, c] of winningCells) {
+                        const cellDiv = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                        if (cellDiv) cellDiv.classList.add('win-glow');
+                    }
+}
+                }
+            } else {
+                winnerInfo = null;
+            }
+            updateStatusMessage();
+
+            if (tg) {
+                tg.sendData(JSON.stringify({ event: "game_over", winner: winner || "draw" }));
+                if (tg.MainButton) {
+                    tg.MainButton.setText("Новая игра");
+                    tg.MainButton.show();
+                }
+            }
+        }
+
+        function dropDisc(col) {
+            if (!gameActive) return false;
+            if (col < 0 || col >= COLS) return false;
+
+            let row = -1;
+            for (let r = ROWS-1; r >= 0; r--) {
+                if (board[r][col] === null) {
+                    row = r;
+                    break;
+                }
+            }
+            if (row === -1) return false;
+
+            board[row][col] = currentPlayer;
+            renderBoardCell(row, col);
+
+            const winningCells = checkWin(row, col, currentPlayer);
+            if (winningCells) {
+                endGame(currentPlayer, winningCells);
+                return true;
+            }
+
+            if (isDraw()) {
+                endGame(null);
+                return true;
+            }
+
+            currentPlayer = (currentPlayer === 'red') ? 'yellow' : 'red';
+            updateStatusMessage();
+            return true;
+        }
+
+        function renderBoardCell(row, col) {
+            const cell = document.querySelector(`.cell[data-row='${row}'][data-col='${col}']`);
+            if (!cell) return;
+            const value = board[row][col];
+            cell.classList.remove('red', 'yellow');
+            if (value === 'red') cell.classList.add('red');
+            else if (value === 'yellow') cell.classList.add('yellow');
+        }
+
+        function renderFullBoard() {
+            for (let i = 0; i < ROWS; i++) {
+                for (let j = 0; j < COLS; j++) {
+                    renderBoardCell(i, j);
+                }
+            }
+        }
+
+        function resetGame() {
+            board = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+            currentPlayer = 'red';
+            gameActive = true;
+            winnerInfo = null;
+
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.classList.remove('red', 'yellow', 'win-glow');
             });
 
-            // 2. ИИ ВРАГОВ (Движение и избегание друг друга)
-            const speed = LEVELS[currentLevel].speed;
+            renderFullBoard();
+            updateStatusMessage();
 
-            enemiesData.forEach((enemy, i) => {
-                // Вектор к игроку
-                let dx = px - (enemy.x + 15);
-                let dy = py - (enemy.y + 15);
-                let dist = Math.hypot(dx, dy);
+            if (tg && tg.MainButton) {
+                tg.MainButton.hide();
+            }
+        }
 
-                // Нормализация и движение
-                if (dist > 0) {
-                    enemy.x += (dx / dist) * speed;
-                    enemy.y += (dy / dist) * speed;
+        function createBoardUI() {
+            boardElement.innerHTML = '';
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.setAttribute('data-row', row);
+                    cell.setAttribute('data-col', col);
+                    cell.addEventListener('click', (function(c) {
+                        return function() {
+                            if (!gameActive) {
+                                safeHapticNotification('error');
+                                return;
+                            }
+                            const success = dropDisc(c);
+                            if (success) {
+                                safeHapticImpact('light');
+                            } else {
+                                safeHapticNotification('warning');
+                            }
+                        };
+                    })(col));
+                    boardElement.appendChild(cell);
                 }
+            }
+            renderFullBoard();
+        }
 
-                // Враги отталкиваются друг от друга (чтобы не слипаться)
-                enemiesData.forEach((otherEnemy, j) => {
-                    if (i !== j) {
-                        let pushDx = enemy.x - otherEnemy.x;
-                        let pushDy = enemy.y - otherEnemy.y;
-                        let pushDist = Math.hypot(pushDx, pushDy);
-                        if (pushDist < 35 && pushDist > 0) {
-                            enemy.x += (pushDx / pushDist) * 1.5;
-                            enemy.y += (pushDy / pushDist) * 1.5;
-                        }
+        function initMainButtonHandler() {
+            if (tg && tg.MainButton) {
+                tg.MainButton.onClick(() => {
+                    if (!gameActive) {
+                        resetGame();
+                        tg.MainButton.hide();
                     }
                 });
-
-                // Применяем координаты
-                enemy.element.style.left = enemy.x + 'px';
-                enemy.element.style.top = enemy.y + 'px';
-
-                // Проверка столкновения с игроком
-                if (dist < 35) takeDamage();
-            });
-
-            animationFrameId = requestAnimationFrame(gameLoop);
+                tg.MainButton.setParams({
+                    color: tg.themeParams.button_color || '#2c3e66',
+                    text_color:
+tg.themeParams.button_text_color || '#ffffff'
+                });
+                tg.MainButton.hide();
+            }
         }
 
-        // Показываем главное меню при старте
-        renderMenu('Охота за кристаллами');
+        function initGame() {
+            createBoardUI();
+            resetBtn.addEventListener('click', () => {
+                resetGame();
+                safeHapticImpact('medium');
+            });
+            updateStatusMessage();
+            initMainButtonHandler();
+        }
 
-    </script>
+        initGame();
+    }
+</script>
 </body>
 </html>
